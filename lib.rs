@@ -2,10 +2,11 @@
 #[feature(macro_rules)];
 
 extern mod extra;
-
-use std::vec;
+use extra::json;
 use extra::json::{Json, Boolean, List, Null, Number, Object, String};
 use extra::treemap::TreeMap;
+use std::iter::Iterator;
+use std::vec;
 
 pub trait FromT<T> {
   fn take(t: T) -> Option<Self>;
@@ -15,9 +16,25 @@ pub trait FromT<T> {
 
 #[deriving(Clone)]
 pub struct TIterator<'a, T> {
-  // todo make empty staticaly allocated ?
-  priv empty: &'static[T],
-  priv iter: vec::VecIterator<'a, T>,
+  iter: vec::VecIterator<'a, T>,
+}
+
+pub struct TMoveIterator<T> {
+  iter: vec::MoveIterator<T>,
+}
+
+pub struct TMutIterator<'a, T> {
+  iter: vec::VecMutIterator<'a, T>,
+}
+
+pub trait TContainer<T> {
+  fn take<U:FromT<T>>(self) -> Option<U>;
+  fn peek<'a, U:FromT<T>>(&'a self) -> Option<&'a U>;
+  fn mut_peek<'a, U:FromT<T>>(&'a mut self) -> Option<&'a mut U>;
+  fn array_move_iter(self) -> TMoveIterator<T>;
+  fn array_iter<'a>(&'a self) -> TIterator<'a, T>;
+  fn array_mut_iter<'a>(&'a mut self) -> TMutIterator<'a, T>;
+  fn empty(&self) -> bool;
 }
 
 impl<'a> Iterator<&'a Json> for TIterator<'a, Json> {
@@ -26,12 +43,16 @@ impl<'a> Iterator<&'a Json> for TIterator<'a, Json> {
   }
 }
 
-pub trait TContainer<T> {
-  fn take<U:FromT<T>>(self) -> Option<U>;
-  fn peek<'a, U:FromT<T>>(&'a self) -> Option<&'a U>;
-  fn mut_peek<'a, U:FromT<T>>(&'a mut self) -> Option<&'a mut U>;
-  fn array_iter<'a>(&'a self) -> TIterator<'a, T>;
-  fn empty(&self) -> bool;
+impl Iterator<Json> for TMoveIterator<Json> {
+  fn next(&mut self) -> Option<Json> {
+    self.iter.next()
+  }
+}
+
+impl<'a> Iterator<&'a mut Json> for TMutIterator<'a, Json> {
+  fn next(&mut self) -> Option<&'a mut Json> {
+    self.iter.next()
+  }
 }
 
 impl TContainer<Json> for Json {
@@ -47,14 +68,25 @@ impl TContainer<Json> for Json {
     FromT::mut_peek(self)
   }
 
+  fn array_move_iter(self) -> TMoveIterator<Json> {
+    TMoveIterator { iter: match self {
+      List(values) => values.move_iter(),
+      _ => (~[]).move_iter(),
+    }}
+  }
+
   fn array_iter<'a>(&'a self) -> TIterator<'a, Json> {
-    let empty = &'static[];
-    let mut ti = TIterator { empty: empty, iter: empty.iter() };
-    match *self {
-      List(ref values) => ti.iter = values.iter(),
-      _ => {}
-    }
-    ti
+    TIterator { iter: match *self {
+      List(ref values) => values.iter(),
+      _ => (&'static[]).iter(),
+    }}
+  }
+
+  fn array_mut_iter<'a>(&'a mut self) -> TMutIterator<'a, Json> {
+    TMutIterator { iter: match *self {
+      List(ref mut values) => values.mut_iter(),
+      _ => (&'static mut[]).mut_iter(),
+    }}
   }
 
   fn empty(&self) -> bool {
@@ -67,24 +99,15 @@ macro_rules! fjimpl(
 
     impl FromT<Json> for $kind {
       fn take(js: Json) -> Option<$kind> {
-        match js {
-          $variant(v) => Some(v),
-          _ => None,
-        }
+        match js { $variant(v) => Some(v), _ => None }
       }
 
       fn peek<'a>(js: &'a Json) -> Option<&'a $kind> {
-        match *js {
-          $variant(ref v) => Some(v),
-          _ => None,
-        }
+        match *js { $variant(ref v) => Some(v), _ => None }
       }
 
       fn mut_peek<'a>(js: &'a mut Json) -> Option<&'a mut $kind> {
-        match *js {
-          $variant(ref mut v) => Some(v),
-          _ => None,
-        }
+        match *js { $variant(ref mut v) => Some(v), _ => None }
       }
     }
   )
@@ -146,5 +169,63 @@ fn test_null() {
   }
   if js2.empty() {
     fail!();
+  }
+}
+
+#[test]
+fn test_array() {
+  let js1 = json::from_str("[\"str\", \"ostr\", \"value\"]").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  if js1.peek::<List>().unwrap().len() == 0 {
+    fail!();
+  }
+
+  for (value, expected) in js1.array_iter().zip((~["str", "ostr", "value"]).move_iter()) {
+    if !value.peek::<~str>().unwrap().equiv(&expected) {
+      fail!();
+    }
+  }
+}
+
+#[test]
+fn test_move_array() {
+  let js1 = json::from_str("[\"str\", \"ostr\", \"value\"]").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  if js1.peek::<List>().unwrap().len() == 0 {
+    fail!();
+  }
+
+  for (value, expected) in js1.array_move_iter().zip((~["st", "ost", "valu"]).move_iter()) {
+    let mut s = value.take::<~str>().unwrap();
+    s.pop_char();
+    if !s.equiv(&expected) {
+      fail!();
+    }
+  }
+}
+
+#[test]
+fn test_array_mut() {
+  let mut js1 = json::from_str("[1, 2, 3]").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  if js1.peek::<List>().unwrap().len() == 0 {
+    fail!();
+  }
+
+  for (value, expected) in js1.array_mut_iter().zip((~[2f64, 3f64, 4f64]).move_iter()) {
+    let val = value.mut_peek::<f64>().unwrap();
+    *val += 1f64;
+    if *val != expected {
+      fail!();
+    }
   }
 }
