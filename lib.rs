@@ -27,47 +27,41 @@ pub struct TMutIterator<'a, T> {
   iter: vec::VecMutIterator<'a, T>,
 }
 
-pub trait TContainer<T> {
-  fn take<U:FromT<T>>(self) -> Option<U>;
-  fn peek<'a, U:FromT<T>>(&'a self) -> Option<&'a U>;
-  fn mut_peek<'a, U:FromT<T>>(&'a mut self) -> Option<&'a mut U>;
-  fn array_move_iter(self) -> TMoveIterator<T>;
-  fn array_iter<'a>(&'a self) -> TIterator<'a, T>;
-  fn array_mut_iter<'a>(&'a mut self) -> TMutIterator<'a, T>;
+impl<'a, T> Iterator<&'a T> for TIterator<'a, T> {
+  fn next(&mut self) -> Option<&'a T> {
+    self.iter.next()
+  }
+}
+
+impl<T> Iterator<T> for TMoveIterator<T> {
+  fn next(&mut self) -> Option<T> {
+    self.iter.next()
+  }
+}
+
+impl<'a, T> Iterator<&'a mut T> for TMutIterator<'a, T> {
+  fn next(&mut self) -> Option<&'a mut T> {
+    self.iter.next()
+  }
+}
+
+pub trait TContainer {
+  fn take<U:FromT<Self>>(self) -> Option<U> {
+    FromT::take(self)
+  }
+  fn peek<'a, U:FromT<Self>>(&'a self) -> Option<&'a U> {
+    FromT::peek(self)
+  }
+  fn mut_peek<'a, U:FromT<Self>>(&'a mut self) -> Option<&'a mut U> {
+    FromT::mut_peek(self)
+  }
+  fn array_move_iter(self) -> TMoveIterator<Self>;
+  fn array_iter<'a>(&'a self) -> TIterator<'a, Self>;
+  fn array_mut_iter<'a>(&'a mut self) -> TMutIterator<'a, Self>;
   fn empty(&self) -> bool;
 }
 
-impl<'a> Iterator<&'a Json> for TIterator<'a, Json> {
-  fn next(&mut self) -> Option<&'a Json> {
-    self.iter.next()
-  }
-}
-
-impl Iterator<Json> for TMoveIterator<Json> {
-  fn next(&mut self) -> Option<Json> {
-    self.iter.next()
-  }
-}
-
-impl<'a> Iterator<&'a mut Json> for TMutIterator<'a, Json> {
-  fn next(&mut self) -> Option<&'a mut Json> {
-    self.iter.next()
-  }
-}
-
-impl TContainer<Json> for Json {
-  fn take<U:FromT<Json>>(self) -> Option<U> {
-    FromT::take(self)
-  }
-
-  fn peek<'a, U:FromT<Json>>(&'a self) -> Option<&'a U> {
-    FromT::peek(self)
-  }
-
-  fn mut_peek<'a, U:FromT<Json>>(&'a mut self) -> Option<&'a mut U> {
-    FromT::mut_peek(self)
-  }
-
+impl TContainer for Json {
   fn array_move_iter(self) -> TMoveIterator<Json> {
     TMoveIterator { iter: match self {
       List(values) => values.move_iter(),
