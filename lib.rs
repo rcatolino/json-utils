@@ -7,60 +7,65 @@ use std::vec;
 use extra::json::{Json, Boolean, List, Null, Number, Object, String};
 use extra::treemap::TreeMap;
 
-pub trait FromJson {
-  fn take(js: Json) -> Option<Self>;
-  fn peek<'a>(js: &'a Json) -> Option<&'a Self>;
-  fn mut_peek<'a>(js: &'a mut Json) -> Option<&'a mut Self>;
+pub trait FromT<T> {
+  fn take(t: T) -> Option<Self>;
+  fn peek<'a>(t: &'a T) -> Option<&'a Self>;
+  fn mut_peek<'a>(t: &'a mut T) -> Option<&'a mut Self>;
 }
 
 #[deriving(Clone)]
-pub struct JsonIterator<'a> {
+pub struct TIterator<'a, T> {
   // todo make empty staticaly allocated ?
-  priv empty: &'static[Json],
-  priv iter: vec::VecIterator<'a, Json>,
+  priv empty: &'static[T],
+  priv iter: vec::VecIterator<'a, T>,
 }
 
-impl<'a> Iterator<&'a Json> for JsonIterator<'a> {
+impl<'a> Iterator<&'a Json> for TIterator<'a, Json> {
   fn next(&mut self) -> Option<&'a Json> {
-    self.next()
+    self.iter.next()
   }
 }
 
-pub trait JsonContainer {
-  fn take<T:FromJson>(self) -> Option<T>;
-  fn peek<'a, T:FromJson>(&'a self) -> Option<&'a T>;
-  fn mut_peek<'a, T:FromJson>(&'a mut self) -> Option<&'a mut T>;
-  fn array_iter<'a>(&'a self) -> JsonIterator<'a>;
+pub trait TContainer<T> {
+  fn take<U:FromT<T>>(self) -> Option<U>;
+  fn peek<'a, U:FromT<T>>(&'a self) -> Option<&'a U>;
+  fn mut_peek<'a, U:FromT<T>>(&'a mut self) -> Option<&'a mut U>;
+  fn array_iter<'a>(&'a self) -> TIterator<'a, T>;
+  fn empty(&self) -> bool;
 }
 
-impl JsonContainer for Json {
-  fn take<T:FromJson>(self) -> Option<T> {
-    FromJson::take(self)
+impl TContainer<Json> for Json {
+  fn take<U:FromT<Json>>(self) -> Option<U> {
+    FromT::take(self)
   }
 
-  fn peek<'a, T:FromJson>(&'a self) -> Option<&'a T> {
-    FromJson::peek(self)
+  fn peek<'a, U:FromT<Json>>(&'a self) -> Option<&'a U> {
+    FromT::peek(self)
   }
 
-  fn mut_peek<'a, T:FromJson>(&'a mut self) -> Option<&'a mut T> {
-    FromJson::mut_peek(self)
+  fn mut_peek<'a, U:FromT<Json>>(&'a mut self) -> Option<&'a mut U> {
+    FromT::mut_peek(self)
   }
 
-  fn array_iter<'a>(&'a self) -> JsonIterator<'a> {
+  fn array_iter<'a>(&'a self) -> TIterator<'a, Json> {
     let empty = &'static[];
-    let mut jsi = JsonIterator { empty: empty, iter: empty.iter() };
+    let mut ti = TIterator { empty: empty, iter: empty.iter() };
     match *self {
-      List(ref values) => jsi.iter = values.iter(),
+      List(ref values) => ti.iter = values.iter(),
       _ => {}
     }
-    jsi
+    ti
+  }
+
+  fn empty(&self) -> bool {
+    match *self { Null => true, _ => false }
   }
 }
 
 macro_rules! fjimpl(
   ($kind: ty, $variant: ident) => (
 
-    impl FromJson for $kind {
+    impl FromT<Json> for $kind {
       fn take(js: Json) -> Option<$kind> {
         match js {
           $variant(v) => Some(v),
@@ -95,28 +100,51 @@ fjimpl!(~TreeMap<~str, Json>, Object)
 
 #[test]
 fn test_bool() {
-  let js1 = Boolean(true);
+  let js1 = Boolean(false);
   let js2 = Null;
   let a = js1.peek().unwrap();
-  let b = js2.peek().unwrap();
   if *a {
-    println("coucou");
+    fail!();
   }
-  if *b {
-    println("coucou2");
+  if js2.peek::<bool>().is_some() {
+    fail!();
   }
 }
 
 #[test]
 fn test_f64() {
   let js1 = Number(0.1);
-  let js2 = Null;
+  let js2 = Boolean(true);
   let a : &f64 = js1.peek().unwrap();
-  let b : &f64 = js2.peek().unwrap();
-  if *a == 0.1 {
-    println("coucou");
+  if *a != 0.1 {
+    fail!();
   }
-  if *b == 0.1 {
-    println("coucou2");
+  if js2.peek::<f64>().is_some() {
+    fail!();
+  }
+}
+
+#[test]
+fn test_str() {
+  let js1 = String(~"json");
+  let js2 = Boolean(true);
+  let a = js1.peek::<~str>().unwrap();
+  if *a != ~"json" {
+    fail!();
+  }
+  if js2.peek::<~str>().is_some() {
+    fail!();
+  }
+}
+
+#[test]
+fn test_null() {
+  let js1 = Null;
+  let js2 = Boolean(true);
+  if !js1.empty() {
+    fail!();
+  }
+  if js2.empty() {
+    fail!();
   }
 }
