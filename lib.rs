@@ -55,6 +55,9 @@ pub trait TContainer {
   fn mut_peek<'a, U:FromT<Self>>(&'a mut self) -> Option<&'a mut U> {
     FromT::mut_peek(self)
   }
+  fn pop_property<'a, U:FromT<Json>>(&'a mut self, prop: ~str) -> Option<U>;
+  fn property<'a, U:FromT<Self>>(&'a self, prop: ~str) -> Option<&'a U>;
+  fn mut_property<'a, U:FromT<Self>>(&'a mut self, prop: ~str) -> Option<&'a mut U>;
   fn array_move_iter(self) -> TMoveIterator<Self>;
   fn array_iter<'a>(&'a self) -> TIterator<'a, Self>;
   fn array_mut_iter<'a>(&'a mut self) -> TMutIterator<'a, Self>;
@@ -62,6 +65,21 @@ pub trait TContainer {
 }
 
 impl TContainer for Json {
+  fn pop_property<'a, U:FromT<Json>>(&'a mut self, prop: ~str) -> Option<U> {
+    self.mut_peek().and_then(|map: &'a mut ~Object| map.pop(&prop)).
+                    and_then(|p: Json| p.take())
+  }
+
+  fn property<'a, U:FromT<Json>>(&'a self, prop: ~str) -> Option<&'a U> {
+    self.peek().and_then(|map: &'a ~Object| map.find(&prop)).
+                and_then(|p: &'a Json| p.peek())
+  }
+
+  fn mut_property<'a, U:FromT<Json>>(&'a mut self, prop: ~str) -> Option<&'a mut U> {
+    self.mut_peek().and_then(|map: &'a mut ~Object| map.find_mut(&prop)).
+                    and_then(|p: &'a mut Json| p.mut_peek())
+  }
+
   fn array_move_iter(self) -> TMoveIterator<Json> {
     TMoveIterator { iter: match self {
       List(values) => values.move_iter(),
@@ -85,6 +103,20 @@ impl TContainer for Json {
 
   fn empty(&self) -> bool {
     match *self { Null => true, _ => false }
+  }
+}
+
+impl FromT<Json> for Json {
+  fn take(js: Json) -> Option<Json> {
+    Some(js)
+  }
+
+  fn peek<'a>(js: &'a Json) -> Option<&'a Json> {
+    Some(js)
+  }
+
+  fn mut_peek<'a>(js: &'a mut Json) -> Option<&'a mut Json> {
+    Some(js)
   }
 }
 
@@ -221,5 +253,48 @@ fn test_array_mut() {
     if *val != expected {
       fail!();
     }
+  }
+}
+
+#[test]
+fn test_property() {
+  let js1 = json::from_str("{\"key\": \"value\"}").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  js1.peek::<~Object>().unwrap();
+  if js1.property::<~str>(~"key").unwrap() != &~"value" {
+    fail!();
+  }
+}
+
+#[test]
+fn test_move_property() {
+  let mut js1 = json::from_str("{\"key\": \"value\"}").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  js1.peek::<~Object>().unwrap();
+  let mut s = js1.pop_property::<~str>(~"key").unwrap();
+  s.pop_char();
+  if s != ~"valu" {
+    fail!();
+  }
+}
+
+#[test]
+fn test_mut_property() {
+  let mut js1 = json::from_str("{\"key\": 122}").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  js1.peek::<~Object>().unwrap();
+  let f = js1.mut_property::<f64>(~"key").unwrap();
+  *f += 4f64;
+  if *f != 126f64 {
+    fail!();
   }
 }
