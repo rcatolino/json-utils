@@ -64,6 +64,12 @@ pub trait TContainer {
   fn empty(&self) -> bool;
 }
 
+macro_rules! unpack(
+  ($json: ident, $struct_name: ident: $($field: ident)+) => (
+    $struct_name { $($field: $json.pop_property(stringify!($field).to_owned()).unwrap(),)+ }
+  )
+)
+
 impl TContainer for Json {
   fn pop_property<'a, U:FromT<Json>>(&'a mut self, prop: ~str) -> Option<U> {
     self.mut_peek().and_then(|map: &'a mut ~Object| map.pop(&prop)).
@@ -326,5 +332,22 @@ fn test_property_json2() {
     if *value.peek::<f64>().unwrap() != expected {
       fail!();
     }
+  }
+}
+
+struct JsTest {
+  key: ~str,
+  k2: bool,
+  k3: Json,
+}
+
+#[test]
+fn test_unpack_struct() {
+  let mut js1 = json::from_str("{\"key\": \"strvalue\", \"k2\": true, \"k3\": {\"kk1\": 1}}").unwrap();
+
+  let mut jstest = unpack!(js1, JsTest: key k2 k3);
+  if jstest.key != ~"strvalue" || jstest.k2 != true ||
+     jstest.k3.pop_property::<f64>(~"kk1").unwrap() != 1f64 {
+    fail!();
   }
 }
