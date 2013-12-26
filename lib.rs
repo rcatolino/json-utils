@@ -298,3 +298,33 @@ fn test_mut_property() {
     fail!();
   }
 }
+
+#[test]
+fn test_property_json() {
+  let mut js1 = json::from_str("{\"key\": [1, 2, 3]}").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  let list = js1.pop_property::<List>(~"key").unwrap();
+  for (value, expected) in list.iter().zip((~[1f64, 2f64, 3f64]).move_iter()) {
+    if *value.peek::<f64>().unwrap() != expected {
+      fail!();
+    }
+  }
+}
+
+#[test]
+fn test_property_json2() {
+  let mut js1 = json::from_str("{\"key\": [1, 2, 3]}").unwrap();
+  if js1.empty() {
+    fail!();
+  }
+
+  let list = js1.pop_property::<Json>(~"key").unwrap();
+  for (value, expected) in list.array_iter().zip((~[1f64, 2f64, 3f64]).move_iter()) {
+    if *value.peek::<f64>().unwrap() != expected {
+      fail!();
+    }
+  }
+}
